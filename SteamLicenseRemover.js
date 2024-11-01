@@ -16,24 +16,37 @@ async function removeGame(id) {
         const response = await fetch('https://store.steampowered.com/account/removelicense', {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/x-www-form-urlencoded' // Alterado o Content-Type
+                'Content-Type': 'application/x-www-form-urlencoded'
             },
-            body: `sessionid=${encodeURIComponent(g_sessionID)}&packageid=${encodeURIComponent(id)}` // Corrigido o objeto body
+            body: `sessionid=${encodeURIComponent(g_sessionID)}&packageid=${encodeURIComponent(id)}`
         });
 
-        if (response.ok) {
-            const data = await response.json();
-            if (data.success) {
-                removedCount++;
-                console.log(`Game with ID ${id} removed successfully. Total games removed: ${removedCount}`);
-            } else {
-                console.log(`Failed to remove game with ID ${id}.`);
-            }
+        if (response.status === 403) {
+            console.log(`Access forbidden (403). Waiting for 5 minutes before retrying...`);
+            await new Promise(resolve => setTimeout(resolve, 300000)); // Wait for 5 minutes (300,000 ms)
+            await removeGame(id); // Retry removing the game
+            return;
+        }
+
+        if (response.status !== 200) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+        if (data && data.success === 84) {
+            console.log(`Rate limit exceeded. Retrying after delay...`);
+            await new Promise(resolve => setTimeout(resolve, 60000)); // Wait for 60 seconds
+            await removeGame(id); // Retry removing the game
+        } else if (data.success) {
+            removedCount++;
+            console.log(`Game with ID ${id} removed successfully. Total games removed: ${removedCount}`);
         } else {
-            console.log(`Failed to remove game with ID ${id}. Status: ${response.status} - ${response.statusText}`);
+            console.log(`Failed to remove game with ID ${id}.`);
         }
     } catch (error) {
-        console.error(`Error while removing game with ID ${id}:`, error);
+        console.error(`Network or parsing error: ${error}`);
+        await new Promise(resolve => setTimeout(resolve, 60000)); // Wait for 60 seconds on network error
+        await removeGame(id); // Retry removing the game
     }
 }
 
@@ -63,7 +76,7 @@ async function removeGames() {
         const id = extractIdFromLink(link.href);
         if (id) {
             await removeGame(id);
-            await new Promise(resolve => setTimeout(resolve, 2000)); // Aguarda 2 segundos antes de processar o próximo link
+            await new Promise(resolve => setTimeout(resolve, 2000)); // Wait for 2 seconds before processing the next link
         } else {
             console.log(`Failed to extract ID from link: ${link.href}`);
         }
@@ -73,4 +86,3 @@ async function removeGames() {
 }
 
 removeGames();
-
